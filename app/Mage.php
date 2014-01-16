@@ -763,7 +763,7 @@ final class Mage
             self::$_isInstalled = false;
 
             if (is_readable($localConfigFile)) {
-                $localConfig = simplexml_load_file($localConfigFile);
+				$localConfig = SimpleXml_Dom_Element_Adapter::loadFromFile($localConfigFile);
                 date_default_timezone_set('UTC');
                 if (($date = $localConfig->global->install->date) && strtotime($date)) {
                     self::$_isInstalled = true;
