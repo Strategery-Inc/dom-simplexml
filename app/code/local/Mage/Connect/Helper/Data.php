@@ -1,5 +1,9 @@
 <?php
 /**
+ * Override to use SimpleXml_Dom_Element_Adapter instead of SimpleXMLElement (simplexml_load_file)
+ */
+
+/**
  * Magento
  *
  * NOTICE OF LICENSE
@@ -129,7 +133,7 @@ class Mage_Connect_Helper_Data extends Mage_Core_Helper_Data
 
         if (file_exists($xmlFile) && is_readable($xmlFile)) {
 			$xml = SimpleXml_Dom_Element_Adapter::loadFromFile($xmlFile);
-			// $xml  = simplexml_load_file($xmlFile);
+			// $xml  = simplexml_load_file($xmlFile);		// original
             $data = Mage::helper('core')->xmlToAssoc($xml);
             if (!empty($data)) {
                 return $data;
