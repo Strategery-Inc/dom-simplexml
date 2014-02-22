@@ -313,6 +313,14 @@ XML;
 		$value2 = $adapterXml->movie->rating['type']->__toString();
 		$this->assertEquals($value1, $value2);
 
+		// CDATA
+		$xml = $this->configXml;
+		$simpleXml = simplexml_load_string($xml);
+		$adapterXml = SimpleXml_Dom_Element_Adapter::loadFromString($xml);
+		$value1 = $simpleXml->global->install->date->__toString();
+		$value2 = $adapterXml->global->install->date->__toString();
+		$this->assertEquals($value1, $value2);
+
 	}
 
 	public function testMagicGetLeaf()
@@ -568,6 +576,11 @@ XML;
 	}
 
 
+	/**
+	 * We cannot simulate this exactly as SimpleXMLElement works, because the "if($simpleXmlElement)"
+	 * if we want to enable the use of if($SimleXMLElement) then we cannot return an object when there is no children
+	 *
+	 */
 	public function testChildren()
 	{
 		$xml = $this->movies;
@@ -668,6 +681,12 @@ XML;
 		$adapterXml->movie->rating->attributes()->type = 'test';
 		$this->assertXmlStringEqualsXmlString($simpleXml->asXML(), $adapterXml->asXML());
 
+		$simpleXml->movie->title->attributes()->type = 'test';		// this do nothing
+		//$adapterXml->movie->title->attributes()->type = 'test';	// this will throw an error because attributes() is returning an empty array not an object
+																	// we are returning an empty array so we can use if(attributes()) and also foreach(attributes())
+																	// even when there isn't any attribute
+		$this->assertXmlStringEqualsXmlString($simpleXml->asXML(), $adapterXml->asXML());
+
 	}
 
 
@@ -683,6 +702,9 @@ XML;
 
 	}
 
+	/**
+	 * This won't work if we want to use if($element) like SimpleXMLElement does (SimpleXMLElement is very magic with that if, is not like a normal Object)
+	 */
 	public function testAssignAttributeWithArrayAccess()
 	{
 		$xml = $this->movies;
@@ -696,14 +718,14 @@ XML;
 		// non existent tag (it should create tag fist)
 		//$simpleXml->movie->newelement['type'] = 'test';		// <newelement type="test"/></movie>
 		$simpleXml->movie->newelement['type'] = 'test';;
-		$adapterXml->movie->newelement['type'] = 'test';;
-		$this->assertXmlStringEqualsXmlString($simpleXml->asXML(), $adapterXml->asXML());
+		//$adapterXml->movie->newelement['type'] = 'test';;		// the good news is that this will throw a NOTICE at least
+		//$this->assertXmlStringEqualsXmlString($simpleXml->asXML(), $adapterXml->asXML());
 
 		$newElement = $simpleXml->movie->newelement;
 		$newElement['type2'] = 'test2';
 		$newElement = $adapterXml->movie->newelement;
 		$newElement['type2'] = 'test2';
-		$this->assertXmlStringEqualsXmlString($simpleXml->asXML(), $adapterXml->asXML());
+		//$this->assertXmlStringEqualsXmlString($simpleXml->asXML(), $adapterXml->asXML());
 
 	}
 
@@ -725,6 +747,211 @@ XML;
 		$adapterXml->movie[] = $newElement;
 		$this->assertXmlStringEqualsXmlString($simpleXml->asXML(), $adapterXml->asXML());
 	}
+
+
+	/**
+	 * We have a problem here SimpleXMLElement is a magic resource, it will be casted to false if it's an empty tag
+	 * And we can only use Objects, Objects are always casted to true
+	 * And if we don't return an Object we cannot create new elements dynamically as:
+	 * $simpleXmlElement->notexistent = 'newvalue';
+	 * TODO: possible solution: https://wiki.php.net/rfc/object_cast_to_types (__toBool, not implemented yet)
+	 * 		 possible extension: http://osdir.com/ml/php-pecl-devel/2008-11/msg00061.html (phpcastable, site is down now)
+	 */
+	public function testCastToBool()
+	{
+		$xml = $this->movies;
+		$simpleXml = simplexml_load_string($xml);
+		$adapterXml = SimpleXml_Dom_Element_Adapter::loadFromString($xml);
+
+		$value1 = (bool)$simpleXml;
+		$value2 = (bool)$adapterXml;
+		$this->assertSame($value1, $value2);
+
+		$value1 = (bool)$simpleXml->movie;
+		$value2 = (bool)$adapterXml->movie;
+		$this->assertSame($value1, $value2);
+
+		$value1 = (bool)$simpleXml->movie->title;
+		$value2 = (bool)$adapterXml->movie->title;
+		$this->assertSame($value1, $value2);
+
+		// SimpleXML elements with empty tags are casted to false (they are not Objects)
+		$value1 = (bool)$simpleXml->notexist;
+		$value2 = (bool)$adapterXml->notexist;
+		$this->assertSame($value1, $value2);
+
+		$value1 = (bool)$simpleXml->movie[2];	// not exists
+		$value2 = (bool)$adapterXml->movie[2];
+		$this->assertSame($value1, $value2);
+
+		$value1 = (bool)$simpleXml->movie['notexist'];
+		$value2 = (bool)$adapterXml->movie['notexist'];
+		$this->assertSame($value1, $value2);
+
+		$value1 = (bool) $simpleXml->movie->title->children();
+		$value2 = (bool) $adapterXml->movie->title->children();
+		$this->assertSame($value1, $value2);
+
+		$value1 = (bool) $simpleXml->movie->title->attributes();
+		$value2 = (bool) $adapterXml->movie->title->attributes();
+		$this->assertSame($value1, $value2);
+
+
+		$xml = $this->configXml;
+		$simpleXml = simplexml_load_string($xml);
+		$adapterXml = SimpleXml_Dom_Element_Adapter::loadFromString($xml);
+		$value1 = (bool)$simpleXml->global->catalog->product->type->grouped->allow_product_types->simple;	// empty tag
+		$value2 = (bool)$adapterXml->global->catalog->product->type->grouped->allow_product_types->simple;;
+		$this->assertSame($value1, $value2);
+
+
+
+
+
+		$xml = '<root></root>'; // empty XML eval's to FALSE
+		$simpleXml = simplexml_load_string($xml);
+		$adapterXml = SimpleXml_Dom_Element_Adapter::loadFromString($xml);
+		$value1 = (bool)$simpleXml;
+		$value2 = (bool)$adapterXml;
+		//$this->assertSame($value1, $value2);		// fails
+
+		$xml = '<!-- some comment --><false></false>'; // empty XML eval's to FALSE
+		$simpleXml = simplexml_load_string($xml);
+		$adapterXml = SimpleXml_Dom_Element_Adapter::loadFromString($xml);
+		$value1 = (bool)$simpleXml;
+		$value2 = (bool)$adapterXml;
+		//$this->assertSame($value1, $value2);		// fails
+
+
+	}
+
+
+	public function testToArray()
+	{
+		$xml = $this->movies;
+		$simpleXml = simplexml_load_string($xml);
+		$adapterXml = SimpleXml_Dom_Element_Adapter::loadFromString($xml);
+
+		$value1 = (array)$simpleXml->movie->rating;
+		$value2 = (array)$adapterXml->movie->rating;
+
+		print_r($value1);
+		print_r($value2);
+
+		$value1 = (array)$simpleXml->movie->rating->attributes();
+		$value2 = (array)$adapterXml->movie->rating->attributes();
+
+		print_r($value1);
+		//print_r($value2);
+	}
+
+
+	public function testIsset()
+	{
+		$xml = $this->movies;
+		$simpleXml = simplexml_load_string($xml);
+		$adapterXml = SimpleXml_Dom_Element_Adapter::loadFromString($xml);
+
+		$value1 = isset($simpleXml);
+		$value2 = isset($adapterXml);
+		$this->assertSame($value1, $value2);
+
+		$value1 = isset($simpleXml->notexist);
+		$value2 = isset($adapterXml->notexist);
+		$this->assertSame($value1, $value2);
+
+		$value1 = isset($simpleXml->movie);
+		$value2 = isset($adapterXml->movie);		// __isset
+		$this->assertSame($value1, $value2);
+
+		// leaf node
+		$value1 = isset($simpleXml->movie->title);
+		$value2 = isset($adapterXml->movie->title);		// __isset
+		$this->assertSame($value1, $value2);
+
+		$value1 = isset($simpleXml->movie[1]);
+		$value2 = isset($adapterXml->movie[1]);		// offsetExist
+		$this->assertSame($value1, $value2);
+
+		$value1 = isset($simpleXml->movie->rating['type']);
+		$value2 = isset($adapterXml->movie->rating['type']);
+		$this->assertSame($value1, $value2);
+
+		$value1 = isset($simpleXml->movie->rating['notexist']);
+		$value2 = isset($adapterXml->movie->rating['notexist']);
+		$this->assertSame($value1, $value2);
+
+		$value1 = isset($simpleXml->movie->rating->attributes()->type);
+		$value2 = isset($adapterXml->movie->rating->attributes()->type);
+		$this->assertSame($value1, $value2);
+
+	}
+
+
+	public function testUnset()
+	{
+		$xml = $this->movies;
+		$simpleXml = simplexml_load_string($xml);
+		$adapterXml = SimpleXml_Dom_Element_Adapter::loadFromString($xml);
+
+		unset($simpleXml->movie->title);
+		unset($adapterXml->movie->title);	// __unset
+		$this->assertXmlStringEqualsXmlString($simpleXml->asXML(), $adapterXml->asXML());
+
+		unset($simpleXml->movie->rating['type']);
+		unset($adapterXml->movie->rating['type']);	// offsetUnset
+		$this->assertXmlStringEqualsXmlString($simpleXml->asXML(), $adapterXml->asXML());
+
+		unset($simpleXml->movie->rating['notexist']);
+		unset($adapterXml->movie->rating['notexist']);	// offsetUnset
+		$this->assertXmlStringEqualsXmlString($simpleXml->asXML(), $adapterXml->asXML());
+
+		unset($simpleXml->movie[1]->rating->attributes()->type);
+		unset($adapterXml->movie[1]->rating->attributes()->type);
+		$this->assertXmlStringEqualsXmlString($simpleXml->asXML(), $adapterXml->asXML());
+
+		unset($simpleXml->movie);
+		unset($adapterXml->movie);
+		$this->assertXmlStringEqualsXmlString($simpleXml->asXML(), $adapterXml->asXML());
+
+	}
+
+	/**
+	 * This is not possible in PHP at the moment
+	 * http://www.php.net/manual/en/language.types.integer.php
+	 * http://www.php.net/manual/en/function.intval.php
+	 * casting to int will probably returns always "1" (is casted to bool first)
+	 * and will throw an E_NOTICE:
+	 * Object of class ... could not be converted to int
+	 */
+	public function testCastToInt()
+	{
+		$xml = $this->movies;
+		$simpleXml = simplexml_load_string($xml);
+		$adapterXml = SimpleXml_Dom_Element_Adapter::loadFromString($xml);
+
+		$value1 = (int)$simpleXml->movie->rating;
+		// $value2 = (int)$adapterXml->movie->rating;	// Object of class SimpleXml_Dom_Element_Adapter could not be converted to int
+		$value2 = (int)(string)$adapterXml->movie->rating;
+		$this->assertSame($value1, $value2);
+	}
+
+
+	/**
+	 * read comments from testCastToInt
+	 */
+	public function testCastToFloat()
+	{
+		$xml = $this->movies;
+		$simpleXml = simplexml_load_string($xml);
+		$adapterXml = SimpleXml_Dom_Element_Adapter::loadFromString($xml);
+
+		$value1 = (float)$simpleXml->movie->rating;
+		//$value2 = (float)$adapterXml->movie->rating;	// Object of class SimpleXml_Dom_Element_Adapter could not be converted to double
+		$value2 = (float)(string)$adapterXml->movie->rating;
+		$this->assertSame($value1, $value2);
+	}
+
 
 
 	public function testJsonEncode()

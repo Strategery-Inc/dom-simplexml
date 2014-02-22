@@ -334,7 +334,7 @@ class Error_Processor
     protected function _loadXml($xmlFile)
     {
         $configPath = $this->_getFilePath($xmlFile);
-        return ($configPath) ? simplexml_load_file($configPath) : null;
+        return ($configPath) ? SimpleXml_Dom_Element_Adapter::loadFromFile($configPath) : null;
     }
 
     /**

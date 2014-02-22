@@ -1,6 +1,7 @@
 <?php
 /**
- * TODO: Namespaces support
+ * TODO: Namespaces support, proble with "if($simpleXmlElement)" (check tests), problem with typecast to Array (check tests), json_encode and decode
+ * cast to bool, cast to int (not possible without a custom extension I guess)
  * @author Enrique Piatti
  */
 class SimpleXml_Dom_Element_Adapter
@@ -25,11 +26,14 @@ class SimpleXml_Dom_Element_Adapter
 	protected $_pendingParent;
 
 	/**
-	 * @param $domNode DOMElement | DOMAttr | string | array of DOMElement | array of DOMAttr
+	 * @param $domNode DOMDocument | DOMElement | DOMAttr | string | array of DOMElement | array of DOMAttr
 	 */
 	public function __construct($domNode)
 	{
-		if(is_string($domNode)){
+		if($domNode instanceof DOMDocument){
+			$domNode = $domNode->documentElement;
+		}
+		elseif(is_string($domNode)){
 			$document = new DOMDocument();
 			$document->loadXML($domNode);
 			$domNode = $document->documentElement;
@@ -39,11 +43,12 @@ class SimpleXml_Dom_Element_Adapter
 
 	/**
 	 * @param $pendingElementName string
-	 * @return \SimpleXml_Dom_Element_Adapter
+	 * @return $this
 	 */
 	protected function _createNewPendingElement($pendingElementName)
 	{
-		$element = new SimpleXml_Dom_Element_Adapter(null);
+		//$element = new SimpleXml_Dom_Element_Adapter(null);
+		$element = self::_createObject(null, get_class($this));
 		$element->_pendingElement = $pendingElementName;
 		$element->_pendingParent = $this->_getDomElement();
 		return $element;
@@ -94,23 +99,59 @@ class SimpleXml_Dom_Element_Adapter
 	 * @param $document DOMDocument
 	 * @return SimpleXml_Dom_Element_Adapter
 	 */
-	protected static function _createFromDocument($document)
+	public static function createFromDocument($document)
 	{
-		return new SimpleXml_Dom_Element_Adapter($document->documentElement);
+		$className = get_called_class();
+		return self::_createObject($document, $className);
+		//return new SimpleXml_Dom_Element_Adapter($document->documentElement);
+	}
+
+
+	protected static function _createObject($element, $className = null)
+	{
+		if(!$className){
+			$className = get_called_class();	// get_class($this);
+		}
+		return new $className($element);
 	}
 
 	public static function loadFromFile($filePath)
 	{
 		$document = new DOMDocument();
 		$document->load(realpath($filePath));
-		return self::_createFromDocument($document);
+		return self::createFromDocument($document);
 	}
 
-	public static function loadFromString($xml)
+	/**
+	 * @param $xml
+	 * @param string|null $elementClass
+	 * @return SimpleXml_Dom_Element_Adapter
+	 */
+	public static function loadFromString($xml, $elementClass = null)
 	{
 		$document = new DOMDocument();
 		$document->loadXML($xml);
-		return self::_createFromDocument($document);
+		if( ! $elementClass){
+			$elementClass = "SimpleXml_Dom_Element_Adapter";
+		}
+		// PHP 5.3+
+		static $isPhp53 = null;
+		if($isPhp53 === null){
+			$isPhp53 = version_compare(phpversion(), '5.3.0') >= 0;
+		}
+
+		if($isPhp53){
+			return $elementClass::createFromDocument($document);
+		}
+		else {
+			throw new Exception('You need at least PHP 5.3 to use '.get_class());
+			// I think is is faster than Reflection:
+//			return call_user_func(array($elementClass, 'createFromDocument'), $document);
+//			$reflectionMethod = new ReflectionMethod($elementClass, 'createFromDocument');
+//			//$reflectionMethod->setAccessible(true);
+//			return $reflectionMethod->invoke(null, $document);
+		}
+
 	}
 
 	/**
@@ -138,7 +179,9 @@ class SimpleXml_Dom_Element_Adapter
 					break;
 				}
 			}
-			return new SimpleXml_Dom_Element_Adapter($attribute);
+			//return self::_createObject($attribute);
+			return self::_createObject($attribute, get_class($this));
+			//return new SimpleXml_Dom_Element_Adapter($attribute);
 		}
 
 		elseif($this->_getDomElement())
@@ -166,9 +209,16 @@ class SimpleXml_Dom_Element_Adapter
 //			return new SimpleXml_Dom_Element_Adapter($node);
 //		}
 			if( ! $nodes){
-				return $this->_createNewPendingElement($name); // new SimpleXml_Dom_Element_Adapter($name, $this->_getDomElement());
+
+				// returning null so we can use if($element)
+				// return null;
+				// returning array() so we can use it inside an if and also inside a foreach
+				return array();
+
+				//return $this->_createNewPendingElement($name); // new SimpleXml_Dom_Element_Adapter($name, $this->_getDomElement());
 			}
-			return new SimpleXml_Dom_Element_Adapter($nodes);
+			//return new SimpleXml_Dom_Element_Adapter($nodes);
+			return self::_createObject($nodes, get_class($this));
 		}
 		// dummy Element
 		return $this;
@@ -190,6 +240,65 @@ class SimpleXml_Dom_Element_Adapter
 		}
 	}
 
+	public function __isset($name)
+	{
+		if($this->_getDomAttr()){
+			$attribute = null;
+			foreach($this->_domAttributes as $attr){
+				/** @var $attr DOMAttr */
+				if($attr->name == $name){
+					return true;
+				}
+			}
+		}
+
+		elseif($this->_getDomElement())
+		{
+			$childNodes = $this->_getDomElement()->childNodes;
+			foreach($childNodes as $childNode){
+				/** @var $childNode DOMNode */
+				if($childNode instanceof DOMElement){
+					if($childNode->nodeName == $name){
+						return true;
+					}
+				}
+			}
+		}
+		return false;
+	}
+
+	public function __unset($name)
+	{
+		if($this->_getDomAttr()){
+			$attribute = null;
+			foreach($this->_domAttributes as $key => $attr){
+				/** @var $attr DOMAttr */
+				if($attr->name == $name){
+					$this->_getDomElement()->removeAttribute($name);
+					unset($this->_domAttributes[$key]);
+					return;
+				}
+			}
+		}
+
+		elseif($domElement = $this->_getDomElement())
+		{
+			$nodes = $domElement->getElementsByTagName($name);
+			$domElemsToRemove = array();
+			foreach ( $nodes as $node ) {
+				$domElemsToRemove[] = $node;
+			}
+			foreach( $domElemsToRemove as $child ){
+				$child->parentNode->removeChild($child);
+			}
+		}
+	}
+
+
+	public function __clone()
+	{
+		$dummy = '';
+	}
 
 	/**
 	 * returns a SimpleXml_Dom_Element_Adapter object representing the child added to the XML node
@@ -210,7 +319,8 @@ class SimpleXml_Dom_Element_Adapter
 		}
 //		$newText = $this->getDocument()->createTextNode($value);
 //		$newNode->appendChild($newText);
-		return new SimpleXml_Dom_Element_Adapter($newNode);
+		//return new SimpleXml_Dom_Element_Adapter($newNode);
+		return self::_createObject($newNode, get_class($this));
 	}
 
 	/**
@@ -273,7 +383,7 @@ class SimpleXml_Dom_Element_Adapter
 	public function attributes()
 	{
 		if($this->_getDomAttr()){
-			return null;
+			return array();
 		}
 
 		if( ! $this->_getDomElement()){
@@ -288,15 +398,23 @@ class SimpleXml_Dom_Element_Adapter
 				//$value = $attr->nodeValue;
 
 			}
-			return new SimpleXml_Dom_Element_Adapter($attributes);
+			//return new SimpleXml_Dom_Element_Adapter($attributes);
+			return self::_createObject($attributes, get_class($this));
 		}
 
-		return new SimpleXml_Dom_Element_Adapter(null);
+		//return new SimpleXml_Dom_Element_Adapter(null);
+		//return self::_createObject(null, get_class($this));
+		return array();
 	}
 
 	public function children()
 	{
-		return new SimpleXml_Dom_Element_Adapter($this->_getChildElements() ? : null);
+		//return new SimpleXml_Dom_Element_Adapter($this->_getChildElements() ? : null);
+		$children = $this->_getChildElements();
+		if( ! $children){
+			return array();		// this will simulate the if($obj->children()) and will work also with foreach($obj->children() as $child)
+		}
+		return self::_createObject($children, get_class($this));
 	}
 
 
@@ -329,7 +447,8 @@ class SimpleXml_Dom_Element_Adapter
 			// iterate current array
 			$node = $this->_domElements[$this->_position];
 		}
-		return new SimpleXml_Dom_Element_Adapter($node);
+		//return new SimpleXml_Dom_Element_Adapter($node);
+		return self::_createObject($node, get_class($this));
 
 	}
 
@@ -420,7 +539,7 @@ class SimpleXml_Dom_Element_Adapter
 			$text = '';
 			foreach($this->_getDomElement()->childNodes as $node) {
 				/** @var $node DOMNode */
-				if ($node->nodeType != XML_TEXT_NODE) {
+				if ($node->nodeType != XML_TEXT_NODE && $node->nodeType != XML_CDATA_SECTION_NODE) {
 					continue;
 				}
 				//$text .= $node->nodeValue;
@@ -462,7 +581,12 @@ class SimpleXml_Dom_Element_Adapter
 			$node = $attr ? : null;
 		}
 		
-		return new SimpleXml_Dom_Element_Adapter($node);
+		//return new SimpleXml_Dom_Element_Adapter($node);
+		if( ! $node){
+			// return null so we can use if($element) in a similar way to SimpleXMLElement
+			return null;
+		}
+		return self::_createObject($node, get_class($this));
 	}
 
 	public function offsetSet($offset, $value)
@@ -496,8 +620,21 @@ class SimpleXml_Dom_Element_Adapter
 
 	public function offsetUnset($offset)
 	{
-		// TODO: Implement offsetUnset() method.
-		throw new Exception('not implemented');
+
+		if( ! $this->_getDomElement()){
+			return;
+		}
+
+		if(is_integer($offset)){
+			if( isset($this->_domElements[$offset])){
+				unset($this->_domElements[$offset]);
+			}
+		}
+		else {
+			// attributes
+			$this->_getDomElement()->removeAttribute($offset);
+		}
+
 	}
 
 
@@ -516,7 +653,8 @@ class SimpleXml_Dom_Element_Adapter
 			// $result->item(0);
 			foreach($result as $node){
 				/** @var $node DomElement */
-				$elements[] = new SimpleXml_Dom_Element_Adapter($node);
+				//$elements[] = new SimpleXml_Dom_Element_Adapter($node);
+				$elements[] = self::_createObject($node, get_class($this));
 			}
 		}
 		return $elements;
